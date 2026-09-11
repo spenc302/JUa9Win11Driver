@@ -1,0 +1,20 @@
+# Build outputs
+x64/
+Debug/
+Release/
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.log
+*.cat
+*.map
+*.tlog
+
+# Visual Studio / VS Code
+.vs/
+*.user
+*.suo
+
+# Driver package outputs
+package/

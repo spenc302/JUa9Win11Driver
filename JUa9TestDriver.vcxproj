@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{D4F1F9CE-5F1B-4A2D-9F47-27B5D2BD0C81}</ProjectGuid>
+    <RootNamespace>JUa9TestDriver</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <PlatformToolset>v143</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <TargetExt>.sys</TargetExt>
+    <TargetName>JUa9TestDriver</TargetName>
+    <WDKContentRoot>C:\Program Files (x86)\Windows Kits\10\</WDKContentRoot>
+    <WDKBuildFolder>10.0.26100.0</WDKBuildFolder>
+    <_NT_TARGET_VERSION>0xA000010</_NT_TARGET_VERSION>
+    <Valid_NTTARGETVERSIONS>0xA000010</Valid_NTTARGETVERSIONS>
+    <KmdfVersion>1.35</KmdfVersion>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+    <IsKernelModeToolset>true</IsKernelModeToolset>
+    <MatchingSdkPresent>true</MatchingSdkPresent>
+    <MatchingWdkPresent>true</MatchingWdkPresent>
+    <GenerateManifest>false</GenerateManifest>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <DriverType>KMDF</DriverType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <TargetVersion>Windows10</TargetVersion>
+    <PlatformToolset>v143</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+  </PropertyGroup>
+  <Import Project="$(WDKContentRoot)DesignTime\CommonConfiguration\Neutral\WDK\$(WDKBuildFolder)\WDK.props" />
+  <Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.Default.props" />
+  <Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.KernelMode.Default.props" />
+  <Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.KernelMode.props" />
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <TargetExt>.sys</TargetExt>
+    <TargetName>JUa9TestDriver</TargetName>
+  </PropertyGroup>
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);AMD64;_AMD64_;NTDDI_VERSION=0x0A000010;_WIN32_WINNT=0x0A00;WINVER=0x0A00</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(WDKContentRoot)Include\$(TargetPlatformVersion)\km;$(WDKContentRoot)Include\$(TargetPlatformVersion)\shared;$(WDKContentRoot)Include\wdf\kmdf\1.35;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WarningLevel>Level4</WarningLevel>
+      <WarningAsError>false</WarningAsError>
+      <CompileAs>CompileAsC</CompileAs>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Native</SubSystem>
+      <Driver>Driver</Driver>
+      <AdditionalDependencies>ntoskrnl.lib;hal.lib;bufferoverflowfastfailk.lib;WdfLdr.lib;WdfDriverEntry.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(WDKContentRoot)Lib\$(TargetPlatformVersion)\km\x64;$(WDKContentRoot)Lib\wdf\kmdf\x64\1.35</AdditionalLibraryDirectories>
+      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
+      <EntryPointSymbol>FxDriverEntry</EntryPointSymbol>
+      <AdditionalOptions>/NODEFAULTLIB %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="JUa9TestDriver.c" />
+    <ClCompile Include="protocol.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="protocol.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Inf Include="JUa9TestDriver.inf">
+      <SpecifyArchitecture>true</SpecifyArchitecture>
+      <Architecture>x64</Architecture>
+      <SpecifyDriverVerDirectiveDate>true</SpecifyDriverVerDirectiveDate>
+      <DateStamp>09/11/2026</DateStamp>
+      <SpecifyDriverVerDirectiveVersion>true</SpecifyDriverVerDirectiveVersion>
+      <TimeStamp>1.0.0.10</TimeStamp>
+      <CopyOutput>$(IntDir)JUa9TestDriver.inf</CopyOutput>
+    </Inf>
+  </ItemGroup>
+  <Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.LateEvaluation.props" />
+  <Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.KernelMode.LateEvaluation.props" />
+  <PropertyGroup>
+    <PackageDir>$(OutDir)package\</PackageDir>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.KernelMode.KMDF.targets" Condition="Exists('$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.KernelMode.KMDF.targets')" />
+  <Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.Common.targets" />
+</Project>
