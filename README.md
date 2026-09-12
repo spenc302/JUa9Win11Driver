@@ -114,6 +114,3 @@ first and run:
 JUa9Bridge.exe --rumble
 ```
 
-Secure the joystick before testing. As noted above, this has not produced a
-physical response on the tested hardware, most likely due to a hardware
-fault rather than a protocol issue.
