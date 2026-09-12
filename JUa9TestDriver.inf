@@ -7,7 +7,7 @@ Signature="$WINDOWS NT$"
 Class=USBDevice
 ClassGuid={88BAE032-5A81-49f0-BC3D-A4FF138216D6}
 Provider=%ManufacturerName%
-DriverVer=09/11/2026,1.0.0.10
+DriverVer=09/11/2026,1.0.0.11
 CatalogFile=JUa9TestDriver.cat
 PnpLockdown=1
 

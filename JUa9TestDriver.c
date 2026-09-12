@@ -42,6 +42,8 @@ DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD Jua9EvtDeviceAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE Jua9EvtPrepareHardware;
 EVT_WDF_DEVICE_RELEASE_HARDWARE Jua9EvtReleaseHardware;
+EVT_WDF_DEVICE_D0_ENTRY Jua9EvtDeviceD0Entry;
+EVT_WDF_DEVICE_D0_EXIT Jua9EvtDeviceD0Exit;
 EVT_WDF_USB_READER_COMPLETION_ROUTINE Jua9EvtReadComplete;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL Jua9EvtIoDeviceControl;
 
@@ -75,6 +77,8 @@ Jua9EvtDeviceAdd(
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&callbacks);
     callbacks.EvtDevicePrepareHardware = Jua9EvtPrepareHardware;
     callbacks.EvtDeviceReleaseHardware = Jua9EvtReleaseHardware;
+    callbacks.EvtDeviceD0Entry = Jua9EvtDeviceD0Entry;
+    callbacks.EvtDeviceD0Exit = Jua9EvtDeviceD0Exit;
     WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &callbacks);
 
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes, DEVICE_CONTEXT);
@@ -200,6 +204,40 @@ Jua9EvtReleaseHardware(
     context->InputPipe = NULL;
     context->OutputPipe = NULL;
     context->UsbDevice = NULL;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+Jua9EvtDeviceD0Entry(
+    _In_ WDFDEVICE Device,
+    _In_ WDF_POWER_DEVICE_STATE PreviousState
+    )
+{
+    UNREFERENCED_PARAMETER(PreviousState);
+    PDEVICE_CONTEXT context = DeviceGetContext(Device);
+    NTSTATUS status = STATUS_SUCCESS;
+
+    if (context->InputPipe != NULL) {
+        status = WdfIoTargetStart(
+            WdfUsbTargetPipeGetIoTarget(context->InputPipe));
+    }
+    return status;
+}
+
+NTSTATUS
+Jua9EvtDeviceD0Exit(
+    _In_ WDFDEVICE Device,
+    _In_ WDF_POWER_DEVICE_STATE TargetState
+    )
+{
+    UNREFERENCED_PARAMETER(TargetState);
+    PDEVICE_CONTEXT context = DeviceGetContext(Device);
+
+    if (context->InputPipe != NULL) {
+        WdfIoTargetStop(
+            WdfUsbTargetPipeGetIoTarget(context->InputPipe),
+            WdfIoTargetCancelSentIo);
+    }
     return STATUS_SUCCESS;
 }
 
