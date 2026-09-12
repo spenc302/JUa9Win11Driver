@@ -1,9 +1,137 @@
 #include <windows.h>
 #include <setupapi.h>
+#include <shellapi.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <atomic>
+
+#include "resource.h"
 
 #pragma comment(lib, "setupapi.lib")
+#pragma comment(lib, "shell32.lib")
+
+// --- Tray icon / background-process support ------------------------------
+//
+// The bridge normally runs as a hidden background process controlled from
+// the system tray instead of a visible console window. Diagnostic modes
+// (--rumble / --autocenter) still allocate a console so their output is
+// visible when run manually.
+
+namespace {
+
+constexpr UINT kTrayMessage = WM_APP + 1;
+constexpr UINT kTrayIconId = 1;
+constexpr UINT kMenuIdExit = 1001;
+constexpr wchar_t kWindowClassName[] = L"JUa9BridgeTrayWnd";
+
+std::atomic<bool> g_running{ true };
+NOTIFYICONDATAW g_trayIcon = {};
+HWND g_trayWnd = nullptr;
+
+void RemoveTrayIcon()
+{
+    if (g_trayIcon.cbSize != 0) {
+        Shell_NotifyIconW(NIM_DELETE, &g_trayIcon);
+        g_trayIcon = {};
+    }
+}
+
+LRESULT CALLBACK TrayWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+    case kTrayMessage:
+        if (lParam == WM_RBUTTONUP || lParam == WM_LBUTTONUP) {
+            POINT pt;
+            GetCursorPos(&pt);
+            HMENU menu = CreatePopupMenu();
+            AppendMenuW(menu, MF_STRING, kMenuIdExit, L"Stop JUa9 Bridge");
+            SetForegroundWindow(hWnd); // required so the menu dismisses on focus loss
+            TrackPopupMenu(menu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hWnd, nullptr);
+            DestroyMenu(menu);
+        }
+        return 0;
+    case WM_COMMAND:
+        if (LOWORD(wParam) == kMenuIdExit) {
+            g_running = false;
+            DestroyWindow(hWnd);
+        }
+        return 0;
+    case WM_DESTROY:
+        RemoveTrayIcon();
+        PostQuitMessage(0);
+        return 0;
+    default:
+        return DefWindowProcW(hWnd, msg, wParam, lParam);
+    }
+}
+
+// Creates a message-only-style hidden window plus its tray icon. Returns
+// nullptr on failure.
+HWND CreateTrayWindow(HINSTANCE hInstance)
+{
+    HICON appIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+    if (appIcon == nullptr) {
+        appIcon = LoadIconW(nullptr, IDI_APPLICATION); // fallback if the .rc wasn't built in
+    }
+
+    WNDCLASSW wc = {};
+    wc.lpfnWndProc = TrayWndProc;
+    wc.hInstance = hInstance;
+    wc.lpszClassName = kWindowClassName;
+    wc.hIcon = appIcon;
+    if (!RegisterClassW(&wc)) {
+        return nullptr;
+    }
+
+    // A regular (non-message-only) hidden top-level window is used rather
+    // than HWND_MESSAGE so that Shell_NotifyIcon's taskbar-recreation and
+    // foreground/menu behavior work reliably across Explorer restarts.
+    HWND hwnd = CreateWindowExW(
+        0, kWindowClassName, L"JUa9 Bridge", WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT, 0, 0,
+        nullptr, nullptr, hInstance, nullptr);
+    if (hwnd == nullptr) {
+        return nullptr;
+    }
+    // Deliberately never shown -- ShowWindow(SW_HIDE) is the default state
+    // for a window that's never had ShowWindow(SW_SHOW) called on it.
+
+    g_trayIcon.cbSize = sizeof(g_trayIcon);
+    g_trayIcon.hWnd = hwnd;
+    g_trayIcon.uID = kTrayIconId;
+    g_trayIcon.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    g_trayIcon.uCallbackMessage = kTrayMessage;
+    g_trayIcon.hIcon = appIcon;
+    wcscpy_s(g_trayIcon.szTip, L"JUa9 Bridge (running)");
+    Shell_NotifyIconW(NIM_ADD, &g_trayIcon);
+
+    return hwnd;
+}
+
+// Opens a console window for diagnostic modes (--rumble / --autocenter) so
+// their wprintf/fwprintf output is visible, since the app otherwise builds
+// with no console at all now that entry has moved to wWinMain.
+// Closes the tray window/icon from the worker thread -- used when the
+// bridge loop exits on its own (device unplugged, vJoy unavailable, etc.)
+// so the tray icon doesn't linger after the thread it represents has died.
+void RequestTrayShutdown()
+{
+    g_running = false;
+    if (g_trayWnd != nullptr) {
+        PostMessageW(g_trayWnd, WM_CLOSE, 0, 0);
+    }
+}
+
+void AttachDiagnosticConsole()
+{
+    AllocConsole();
+    FILE* dummy = nullptr;
+    freopen_s(&dummy, "CONOUT$", "w", stdout);
+    freopen_s(&dummy, "CONOUT$", "w", stderr);
+    freopen_s(&dummy, "CONIN$", "r", stdin);
+}
+
+} // namespace
 
 static const GUID kJua9Interface =
 { 0x9c1e2c0b, 0x4d72, 0x4a19, { 0x9f, 0x6a, 0x7b, 0x4d, 0x11, 0x2e, 0x6c, 0x81 } };
@@ -320,34 +448,19 @@ static bool RunAutocenterTest(HANDLE device)
     return true;
 }
 
-int wmain(int argc, wchar_t** argv)
+// The former body of main() for the continuous vJoy-bridging mode. Runs on
+// a worker thread once the tray window is up; checks g_running periodically
+// so "Stop JUa9 Bridge" from the tray menu unwinds it cleanly instead of
+// leaving the vJoy device or USB handle in a half-torn-down state.
+DWORD WINAPI RunBridgeThread(LPVOID param)
 {
-    setvbuf(stdout, nullptr, _IONBF, 0);
-    setvbuf(stderr, nullptr, _IONBF, 0);
-
-    HANDLE device = FindJua9();
-    if (device == INVALID_HANDLE_VALUE) {
-        fwprintf(stderr, L"J-UA9 interface not found. Is the test driver started?\n");
-        return 1;
-    }
-
-    if (argc > 1 && _wcsicmp(argv[1], L"--rumble") == 0) {
-        wprintf(L"Running a max-strength 3 second rumble test.\n");
-        bool success = RunRumbleTest(device);
-        CloseHandle(device);
-        return success ? 0 : 1;
-    }
-
-    if (argc > 1 && _wcsicmp(argv[1], L"--autocenter") == 0) {
-        bool success = RunAutocenterTest(device);
-        CloseHandle(device);
-        return success ? 0 : 1;
-    }
+    HANDLE device = static_cast<HANDLE>(param);
 
     HMODULE vjoy = LoadLibraryW(L"C:\\Program Files\\vJoy\\x64\\vJoyInterface.dll");
     if (vjoy == nullptr) {
         fwprintf(stderr, L"vJoyInterface.dll was not found.\n");
         CloseHandle(device);
+        RequestTrayShutdown();
         return 1;
     }
 
@@ -371,6 +484,7 @@ int wmain(int argc, wchar_t** argv)
         fwprintf(stderr, L"vJoy device 1 is unavailable or already owned.\n");
         FreeLibrary(vjoy);
         CloseHandle(device);
+        RequestTrayShutdown();
         return 1;
     }
 
@@ -379,7 +493,7 @@ int wmain(int argc, wchar_t** argv)
             axisExists(vjoyId, 0x30) ? L"yes" : L"no",
             axisExists(vjoyId, 0x31) ? L"yes" : L"no",
             axisExists(vjoyId, 0x36) ? L"yes" : L"no");
-    wprintf(L"J-UA9 bridge running on vJoy device 1. Press Ctrl+C to stop.\n");
+    wprintf(L"J-UA9 bridge running on vJoy device 1. Use the tray icon to stop.\n");
 
     BYTE frame[16] = {};
     JoystickPositionV2 position = {};
@@ -393,7 +507,7 @@ int wmain(int argc, wchar_t** argv)
     BYTE lastFrame[sizeof(frame)] = {};
     bool haveLastFrame = false;
 
-    for (;;) {
+    while (g_running) {
         DWORD returned = 0;
         if (!DeviceIoControl(device, kGetLastReport, nullptr, 0,
                              frame, sizeof(frame), &returned, nullptr)) {
@@ -489,5 +603,81 @@ int wmain(int argc, wchar_t** argv)
     relinquish(vjoyId);
     FreeLibrary(vjoy);
     CloseHandle(device);
+    RequestTrayShutdown(); // no-op if the tray "Stop" item already triggered this
     return 0;
+}
+
+int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int)
+{
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+
+    // Diagnostic modes: unchanged behavior, just now need an explicit
+    // console since the app no longer has one by default.
+    if (argc > 1 && (_wcsicmp(argv[1], L"--rumble") == 0 ||
+                     _wcsicmp(argv[1], L"--autocenter") == 0)) {
+        AttachDiagnosticConsole();
+        setvbuf(stdout, nullptr, _IONBF, 0);
+        setvbuf(stderr, nullptr, _IONBF, 0);
+
+        HANDLE device = FindJua9();
+        if (device == INVALID_HANDLE_VALUE) {
+            fwprintf(stderr, L"J-UA9 interface not found. Is the test driver started?\n");
+            LocalFree(argv);
+            return 1;
+        }
+
+        bool success;
+        if (_wcsicmp(argv[1], L"--rumble") == 0) {
+            wprintf(L"Running a max-strength 3 second rumble test.\n");
+            success = RunRumbleTest(device);
+        } else {
+            success = RunAutocenterTest(device);
+        }
+        CloseHandle(device);
+        wprintf(L"Press Enter to close this window...\n");
+        getchar();
+        LocalFree(argv);
+        return success ? 0 : 1;
+    }
+    LocalFree(argv);
+
+    // Normal mode: hidden window + tray icon, bridge loop on a worker thread.
+    HANDLE device = FindJua9();
+    if (device == INVALID_HANDLE_VALUE) {
+        MessageBoxW(nullptr,
+            L"J-UA9 interface not found. Is the test driver started?",
+            L"JUa9 Bridge", MB_ICONERROR | MB_OK);
+        return 1;
+    }
+
+    g_trayWnd = CreateTrayWindow(hInstance);
+    if (g_trayWnd == nullptr) {
+        MessageBoxW(nullptr, L"Failed to create tray window.", L"JUa9 Bridge",
+            MB_ICONERROR | MB_OK);
+        CloseHandle(device);
+        return 1;
+    }
+
+    HANDLE thread = CreateThread(nullptr, 0, RunBridgeThread, device, 0, nullptr);
+    if (thread == nullptr) {
+        MessageBoxW(nullptr, L"Failed to start bridge thread.", L"JUa9 Bridge",
+            MB_ICONERROR | MB_OK);
+        DestroyWindow(g_trayWnd);
+        CloseHandle(device);
+        return 1;
+    }
+
+    MSG msg;
+    while (GetMessage(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+
+    // Give the bridge thread a moment to notice g_running==false and unwind
+    // cleanly (release vJoy device, close the USB handle) before exiting.
+    g_running = false;
+    WaitForSingleObject(thread, 2000);
+    CloseHandle(thread);
+    return static_cast<int>(msg.wParam);
 }
