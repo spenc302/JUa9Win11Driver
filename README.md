@@ -17,22 +17,16 @@ protocol spec and no modern Windows driver exists for this device.
   replacement/removal were fixed by using
   `WdfUsbTargetPipeConfigContinuousReader` and cleaning up pending I/O
   correctly.
-- **Force feedback (rumble) does not work on this specific unit.** The
-  interrupt-OUT command protocol was fully reverse engineered and validated
-  byte-for-byte against the Linux `iforce` source (see below), including
-  device identification queries, effect upload, autocenter/spring, and gain
-  commands. Despite this, no physical motor response has ever been observed,
-  even when:
-  - Bypassing this driver entirely and issuing a standard DirectInput
-    constant-force effect through the original Windows XP Immersion/Logitech
-    driver in a VM (i.e. testing the manufacturer's own driver, not this
-    project's code).
-  - Using maximum magnitude/gain and long durations.
-  - Testing a bare autocenter/spring effect (no custom effect upload at all).
-
-  This strongly suggests the physical force-feedback motors/actuators in this
-  particular ~25-year-old unit have failed, independent of any driver or
-  protocol issue. The read-only input path is unaffected and works reliably.
+- **Force feedback (rumble & autocenter) is working.** The interrupt-OUT
+  command protocol was verified against raw hardware USB traffic captured
+  from the original Windows XP Logitech driver:
+  - Startup handshake: EP0 queries `'N'` (`4E 0A`), `'B'` (`42 C8 00`)
+  - Profile setup: `40 05 00 04` on EP1 (sets hardware spring/autocenter)
+  - Motor enable: `42 01` on EP1 (engages H-bridge motor drivers)
+  - Hardware optical grip sensor: reports `02 03` when hand is detected on
+    grip, allowing motors to safely fire.
+  - Custom effect upload and playback: tested and verified via `JUa9Bridge.exe --rumble`
+    and `JUa9Bridge.exe --autocenter`.
 
 ## Project layout
 

@@ -148,6 +148,21 @@ static bool QueryId(
     return *returned != 0 && response[0] == request;
 }
 
+static bool SendPacketPaced(HANDLE device, const BYTE* packet, BYTE length)
+{
+    // Real hardware (Intel 80930 + Immersion I-Force firmware) parses each
+    // command asynchronously after the USB transaction completes; Linux's
+    // driver naturally paces packets because it waits for each URB's
+    // completion callback before submitting the next one. Our synchronous
+    // writes complete as soon as the bus transaction acks, which can be
+    // faster than the device's firmware can actually parse/store the
+    // command. A short pause between sends gives the firmware time to
+    // finish processing before the next command arrives.
+    bool ok = SendPacket(device, packet, length);
+    Sleep(20);
+    return ok;
+}
+
 static bool RunRumbleTest(HANDLE device)
 {
     /*
@@ -159,9 +174,10 @@ static bool RunRumbleTest(HANDLE device)
      * payload bytes to copy out of its internal ring buffer -- it is never
      * actually transmitted as a separate byte on the wire.
      */
-    const BYTE autocenterMagnitude[] = { 0x40, 0x03, 0x00 };
-    const BYTE autocenterEnable[] = { 0x40, 0x04, 0x01 };
-    const BYTE enable[] = { 0x42, 0x04 };
+    // Update with exact values captured from working XP driver:
+    // XP Driver sends: 40 05 00 04 (Spring profile), 42 01 (Enable motors)
+    const BYTE setProfile[] = { 0x40, 0x05, 0x00, 0x04 };
+    const BYTE enable[] = { 0x42, 0x01 };
     const BYTE gain[] = { 0x43, 0x7F };
     const BYTE magnitude[] = { 0x03, 0x00, 0x00, 0x7F };
     const BYTE envelope[] = {
@@ -172,9 +188,10 @@ static bool RunRumbleTest(HANDLE device)
         0x01, 0x00, 0x00, 0x20, 0xB8, 0x0B, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00
     };
-    const BYTE play[] = { 0x41, 0x00, 0x41, 0x7F };
+    // FF_CMD_PLAY payload is [effect_id_lo, flag, repeat_count_lo]
+    const BYTE playLoop[] = { 0x41, 0x00, 0x41, 0x05 };
     const BYTE stop[] = { 0x41, 0x00, 0x00, 0x00 };
-    const BYTE disable[] = { 0x42, 0x01 };
+    const BYTE disable[] = { 0x42, 0x00 };
     BYTE response[16] = {};
     DWORD responseLength = 0;
 
@@ -201,19 +218,19 @@ static bool RunRumbleTest(HANDLE device)
         return false;
     }
 
-    if (!SendPacket(device, autocenterMagnitude, sizeof(autocenterMagnitude)) ||
-        !SendPacket(device, autocenterEnable, sizeof(autocenterEnable)) ||
-        !SendPacket(device, enable, sizeof(enable)) ||
-        !SendPacket(device, gain, sizeof(gain)) ||
-        !SendPacket(device, magnitude, sizeof(magnitude)) ||
-        !SendPacket(device, envelope, sizeof(envelope)) ||
-        !SendPacket(device, effect, sizeof(effect)) ||
-        !SendPacket(device, play, sizeof(play))) {
+    if (!SendPacketPaced(device, setProfile, sizeof(setProfile)) ||
+        !SendPacketPaced(device, enable, sizeof(enable)) ||
+        !SendPacketPaced(device, gain, sizeof(gain)) ||
+        !SendPacketPaced(device, magnitude, sizeof(magnitude)) ||
+        !SendPacketPaced(device, envelope, sizeof(envelope)) ||
+        !SendPacketPaced(device, effect, sizeof(effect)) ||
+        !SendPacketPaced(device, playLoop, sizeof(playLoop))) {
         SendPacket(device, disable, sizeof(disable));
         return false;
     }
 
-    wprintf(L"Effect uploaded and playing at max strength for 3 seconds...\n");
+    wprintf(L"Effect uploaded and playing at max strength for 3 seconds "
+            L"(re-issuing play every 200 ms as a keep-alive)...\n");
     for (int i = 0; i < 30; ++i) {
         BYTE report[16] = {};
         DWORD returned = 0;
@@ -226,6 +243,9 @@ static bool RunRumbleTest(HANDLE device)
             }
             wprintf(L"\n");
         }
+        if (i % 2 == 0) {
+            SendPacket(device, playLoop, sizeof(playLoop));
+        }
         Sleep(100);
     }
     bool stopped = SendPacket(device, stop, sizeof(stop));
@@ -235,33 +255,69 @@ static bool RunRumbleTest(HANDLE device)
 
 static bool RunAutocenterTest(HANDLE device)
 {
-    // Simplest possible test: enable FFB and crank the autocenter spring to
-    // max. No effect memory / core-effect upload involved at all -- if the
-    // stick doesn't resist being pushed off-center, the output pipe itself
-    // (or the device's FFB engine) isn't responding to any command.
-    const BYTE enable[] = { 0x42, 0x04 };
+    // Exact sequence verified from original XP driver USB trace:
+    // 1. Query 'N' (Device ID) -> returns 4e 0a
+    // 2. Query 'B' (RAM size)  -> returns 42 c8 00
+    // 3. OUT EP 0x01: 40 05 00 04 (Hardware spring/profile parameters)
+    // 4. OUT EP 0x01: 42 01 (Enable motors)
+    const BYTE setProfile[] = { 0x40, 0x05, 0x00, 0x04 };
+    const BYTE enableMotors[] = { 0x42, 0x01 };
     const BYTE gain[] = { 0x43, 0x7F };
-    const BYTE autocenterMagnitude[] = { 0x40, 0x03, 0x7F };
-    const BYTE autocenterEnable[] = { 0x40, 0x04, 0x01 };
-    const BYTE autocenterOff[] = { 0x40, 0x03, 0x00 };
-    const BYTE disable[] = { 0x42, 0x01 };
+    const BYTE disableMotors[] = { 0x42, 0x00 };
 
-    if (!SendPacket(device, enable, sizeof(enable)) ||
-        !SendPacket(device, gain, sizeof(gain)) ||
-        !SendPacket(device, autocenterMagnitude, sizeof(autocenterMagnitude)) ||
-        !SendPacket(device, autocenterEnable, sizeof(autocenterEnable))) {
-        SendPacket(device, disable, sizeof(disable));
+    BYTE response[16] = {};
+    DWORD responseLength = 0;
+
+    const char queryIds[] = { 'O', 'M', 'P', 'B', 'N' };
+    for (char id : queryIds) {
+        DWORD len = 0;
+        BYTE buf[16] = {};
+        BOOL ok = QueryId(device, static_cast<BYTE>(id), buf, sizeof(buf), &len);
+        wprintf(L"Query '%c': ok=%d len=%lu bytes=", id, ok, len);
+        for (DWORD i = 0; i < len && i < sizeof(buf); ++i) {
+            wprintf(L"%02X ", buf[i]);
+        }
+        wprintf(L"\n");
+    }
+
+    wprintf(L"Sending XP driver exact startup packets: 40 05 00 04, then 42 01...\n");
+    if (!SendPacketPaced(device, setProfile, sizeof(setProfile)) ||
+        !SendPacketPaced(device, enableMotors, sizeof(enableMotors)) ||
+        !SendPacketPaced(device, gain, sizeof(gain))) {
+        wprintf(L"Failed to send startup packets.\n");
         return false;
     }
 
-    wprintf(L"Autocenter spring at max strength for 8 seconds. Slowly move the "
-            L"stick through center in different directions and feel for any "
-            L"resistance/stiffness...\n");
-    Sleep(8000);
+    wprintf(L"Hardware motor profile active for 10 seconds.\n"
+            L"HOLD the joystick grip firmly (covering the optical hand sensor).\n"
+            L"Live status from joystick:\n");
+    for (int i = 0; i < 100; ++i) {
+        BYTE report[16] = {};
+        DWORD returned = 0;
+        if (DeviceIoControl(device, kGetLastReport, nullptr, 0, report,
+                            sizeof(report), &returned, nullptr) &&
+            returned > 0) {
+            if (report[0] == 0x02) {
+                const wchar_t* safetyState = L"UNKNOWN";
+                if (report[1] == 0x01) {
+                    safetyState = L"01 (Safety OPEN / Hand OFF grip / Standby)";
+                } else if (report[1] == 0x03) {
+                    safetyState = L"03 (MOTORS ENGAGED / Hand ON grip / Active!)";
+                }
+                wprintf(L"[%02d] Status Report 0x02: State=%s raw=%02X %02X %02X %02X\n",
+                        i, safetyState, report[0], report[1], report[2], report[3]);
+            } else if (report[0] == 0x01) {
+                int16_t x = static_cast<int16_t>(report[1] | (report[2] << 8));
+                int16_t y = static_cast<int16_t>(report[3] | (report[4] << 8));
+                wprintf(L"[%02d] Input Report 0x01: X=%6d Y=%6d Throttle=%3d\n",
+                        i, x, y, report[5]);
+            }
+        }
+        Sleep(100);
+    }
 
-    bool off = SendPacket(device, autocenterOff, sizeof(autocenterOff));
-    bool disabled = SendPacket(device, disable, sizeof(disable));
-    return off && disabled;
+    SendPacket(device, disableMotors, sizeof(disableMotors));
+    return true;
 }
 
 int wmain(int argc, wchar_t** argv)
