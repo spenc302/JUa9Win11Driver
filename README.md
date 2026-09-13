@@ -27,10 +27,13 @@ protocol spec and no modern Windows driver exists for this device.
     grip, allowing motors to safely fire.
   - Custom effect upload and playback: tested and verified via `JUa9Bridge.exe --rumble`
     and `JUa9Bridge.exe --autocenter`.
+  - Normal bridge mode registers vJoy's FFB callback and translates live
+    constant-force magnitude plus effect start/stop commands to the J-UA9.
+    Periodic and condition effects are not yet translated.
 
 ## Project layout
 
-- `JUa9TestDriver.c` / `JUa9TestDriver.inf` / `JUa9TestDriver.vcxproj` — the
+- `JUa9UmdfDriver.inf` / `JUa9UmdfDriver.vcxproj` — the
   UDMF2 USB function driver. Selects USB configuration 1, opens interrupt IN
   endpoint `0x82` and interrupt OUT endpoint `0x01`, and exposes a device
   interface with IOCTLs for reading the last report, sending a raw I-Force
@@ -38,8 +41,8 @@ protocol spec and no modern Windows driver exists for this device.
 - `protocol.c` / `protocol.h` — shared frame/command definitions.
 - `JUa9Bridge.cpp` / `JUa9Bridge.vcxproj` — a user-mode console app with two
   modes:
-  - Default: reads reports from the driver and publishes axes/buttons to a
-    vJoy device.
+  - Default: reads reports from the driver, publishes axes/buttons to a vJoy
+    device, and forwards supported live FFB commands back to the J-UA9.
   - `--rumble`: a guarded diagnostic that walks through the full I-Force
     force-feedback command sequence (enable, gain, autocenter, effect
     upload, play, stop, disable) for manual testing.
@@ -76,7 +79,7 @@ Key details validated against a real device:
 - [vJoy](https://sourceforge.net/projects/vjoystick/) installed (for the
   input bridge)
 
-Open `JUa9TestDriver.vcxproj` in Visual Studio, select `Debug|x64`, and
+Open `JUa9UmdfDriver.vcxproj` in Visual Studio, select `Debug|x64`, and
 build. The resulting package must be test-signed before installation. Do not
 enable test signing on a production machine.
 
@@ -88,11 +91,11 @@ Use an elevated command prompt on a test installation:
 bcdedit /set testsigning on
 ```
 
-After reboot, install `JUa9TestDriver.inf` through Device Manager using
+After reboot, install `JUa9UmdfDriver.inf` through Device Manager using
 **Have Disk**, or via:
 
 ```text
-pnputil /add-driver JUa9TestDriver.inf /install
+pnputil /add-driver JUa9UmdfDriver.inf /install
 ```
 
 Revert test signing when finished:
@@ -105,7 +108,27 @@ bcdedit /set testsigning off
 
 `JUa9Bridge.exe` reads reports from the driver's device interface and
 publishes axes/buttons to vJoy device 1. Configure one vJoy device with at
-least X, Y, throttle, rudder, and 8 buttons before running it.
+least X, Y, throttle, rudder, and 9 buttons before running it.
+
+The desktop shortcut helper is no longer needed. You can place or copy
+`JUa9Bridge.exe` directly on the desktop and run it from there.
+
+The normal bridge runs in the background and places a JUa9 Bridge icon in the
+system tray. Double-click the icon, or right-click it and choose **Show Test
+Panel**, to open the UI. The panel has three tabs:
+
+- **Test (Axes & Buttons)** — live X/Y stick position, throttle, buttons, and
+  POV hat status.
+- **Force Feedback & Effects** — master gain, spring return-to-center
+  strength, anti-clipping limiter, and manual constant-force, spring, friction,
+  and sine-wave effect tests. Use **Stop** to stop a test effect.
+- **Calibration & Deadzones** — run the five-second stick/throttle sweep,
+  adjust the deadzone from 0% to 20%, preview the result, or reset calibration
+  to the defaults.
+
+Use **Save Settings** on the relevant tab after changing calibration or force
+feedback controls. Settings are stored for the current Windows user under
+`HKCU\Software\JUa9Bridge` and are restored when the bridge starts.
 
 To run the guarded force-feedback diagnostic instead, stop the normal bridge
 first and run:
