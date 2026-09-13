@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+	<ItemGroup Label="ProjectConfigurations">
+		<ProjectConfiguration Include="Debug|x64">
+			<Configuration>Debug</Configuration>
+			<Platform>x64</Platform>
+		</ProjectConfiguration>
+	</ItemGroup>
+	<PropertyGroup Label="Globals">
+		<ProjectGuid>{B5B3B5D1-0D90-4E84-9B0E-9D2D8F4C1A76}</ProjectGuid>
+		<RootNamespace>JUa9UmdfDriver</RootNamespace>
+		<WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+		<PlatformToolset>v143</PlatformToolset>
+		<SignMode>TestSign</SignMode>
+		<TargetExt>.dll</TargetExt>
+		<TargetName>JUa9UmdfDriver</TargetName>
+		<WDKContentRoot>C:\Program Files (x86)\Windows Kits\10\</WDKContentRoot>
+		<WDKBuildFolder>10.0.26100.0</WDKBuildFolder>
+		<_NT_TARGET_VERSION>0x0A000010</_NT_TARGET_VERSION>
+		<Valid_NTTARGETVERSIONS>0x0A000010</Valid_NTTARGETVERSIONS>
+		<UmdfVersion>2.23</UmdfVersion>
+		<DriverTargetPlatform>Universal</DriverTargetPlatform>
+		<MatchingSdkPresent>true</MatchingSdkPresent>
+		<MatchingWdkPresent>true</MatchingWdkPresent>
+		<GenerateManifest>false</GenerateManifest>
+		<LinkIncremental>false</LinkIncremental>
+	</PropertyGroup>
+	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+		<ConfigurationType>DynamicLibrary</ConfigurationType>
+		<DriverType>UMDF</DriverType>
+		<UseDebugLibraries>true</UseDebugLibraries>
+		<TargetVersion>Windows10</TargetVersion>
+		<PlatformToolset>v143</PlatformToolset>
+	</PropertyGroup>
+	<Import Project="$(WDKContentRoot)DesignTime\CommonConfiguration\Neutral\WDK\$(WDKBuildFolder)\WDK.props" />
+	<Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.Default.props" />
+	<Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.UserMode.props" />
+	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+	<PropertyGroup>
+    <InfVerif>false</InfVerif>
+		<TargetExt>.dll</TargetExt>
+		<TargetName>JUa9UmdfDriver</TargetName>
+		<OutDir>$(IntDir)</OutDir>
+	</PropertyGroup>
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<PreprocessorDefinitions>%(PreprocessorDefinitions);AMD64;_AMD64_;NTDDI_VERSION=0x0A000010;_WIN32_WINNT=0x0A00;WINVER=0x0A00</PreprocessorDefinitions>
+			<AdditionalIncludeDirectories>$(WDKContentRoot)Include\$(TargetPlatformVersion)\um;$(WDKContentRoot)Include\$(TargetPlatformVersion)\shared;$(WDKContentRoot)Include\wdf\umdf\2.23;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+			<WarningLevel>Level4</WarningLevel>
+			<WarningAsError>false</WarningAsError>
+			<CompileAs>CompileAsC</CompileAs>
+			<BufferSecurityCheck>true</BufferSecurityCheck>
+			<RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+		</ClCompile>
+		<Link>
+			<SubSystem>Windows</SubSystem>
+			<AdditionalDependencies>WdfDriverStubUm.lib;ntdll.lib;OneCoreUAP.lib;libucrt.lib;libvcruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			<AdditionalLibraryDirectories>$(VCToolsInstallDir)lib\x64;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\ucrt\x64;$(WDKContentRoot)Lib\$(TargetPlatformVersion)\um\x64;$(WDKContentRoot)Lib\wdf\umdf\x64\2.23;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+		</Link>
+		<DriverSign>
+			<FileDigestAlgorithm>SHA256</FileDigestAlgorithm>
+		</DriverSign>
+	</ItemDefinitionGroup>
+	<ItemGroup>
+		<ClCompile Include="JUa9UmdfDriver.c" />
+		<ClCompile Include="protocol.c" />
+	</ItemGroup>
+	<ItemGroup>
+		<ClInclude Include="protocol.h" />
+	</ItemGroup>
+	<ItemGroup>
+		<Inf Include="JUa9UmdfDriver.inx">
+			<SpecifyArchitecture>true</SpecifyArchitecture>
+			<Architecture>x64</Architecture>
+			<SpecifyDriverVerDirectiveDate>true</SpecifyDriverVerDirectiveDate>
+			<DateStamp>09/12/2026</DateStamp>
+			<SpecifyDriverVerDirectiveVersion>true</SpecifyDriverVerDirectiveVersion>
+			<TimeStamp>1.0.0.1</TimeStamp>
+			<CopyOutput>$(IntDir)JUa9UmdfDriver.inf</CopyOutput>
+		</Inf>
+	</ItemGroup>
+	<Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.LateEvaluation.props" />
+	<Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.UserMode.LateEvaluation.props" />
+	<ItemGroup>
+		<FilesToPackage Include="$(TargetPath)" Condition="'$(ConfigurationType)'=='Driver' or '$(ConfigurationType)'=='DynamicLibrary'" />
+	</ItemGroup>
+	<PropertyGroup>
+    <InfVerif>false</InfVerif>
+		<PackageDir>$(OutDir)package\</PackageDir>
+	</PropertyGroup>
+	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+	<Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.UserMode.UMDF.targets" Condition="Exists('$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.UserMode.UMDF.targets')" />
+	<Import Project="$(WDKContentRoot)Build\$(WDKBuildFolder)\WindowsDriver.Common.targets" />
+</Project>

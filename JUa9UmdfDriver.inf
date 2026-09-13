@@ -1,0 +1,52 @@
+;; UMDF 2 development driver for Logitech WingMan Force J-UA9.
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=USBDevice
+ClassGuid={88BAE032-5A81-49f0-BC3D-A4FF138216D6}
+Provider=%ManufacturerName%
+DriverVer=09/12/2026,1.0.0.1
+CatalogFile=JUa9UmdfDriver.cat
+PnpLockdown=1
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTamd64.10.0...17134
+
+[Standard.NTamd64.10.0...17134]
+%DeviceDesc%=Device_Install,USB\VID_046D&PID_C281
+
+[DestinationDirs]
+DefaultDestDir=13
+UMDriverCopy=13
+
+[SourceDisksNames]
+1=%DiskName%
+
+[SourceDisksFiles]
+JUa9UmdfDriver.dll=1
+
+[Device_Install.NT]
+CopyFiles=UMDriverCopy
+
+[Device_Install.NT.Services]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.Services
+
+[Device_Install.NT.Wdf]
+UmdfService=JUa9UmdfDriver,JUa9UmdfDriver_Install
+UmdfServiceOrder=JUa9UmdfDriver
+UmdfKernelModeClientPolicy=RejectKernelModeClients
+UmdfFileObjectPolicy=AllowNullAndUnknownFileObjects
+
+[JUa9UmdfDriver_Install]
+UmdfLibraryVersion=2.23.0
+ServiceBinary=%13%\JUa9UmdfDriver.dll
+
+[UMDriverCopy]
+JUa9UmdfDriver.dll
+
+[Strings]
+ManufacturerName="Custom"
+DeviceDesc="Wingman Force"
+DiskName="Wingman Force Installation Disk"
