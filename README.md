@@ -1,6 +1,6 @@
 # Logitech WingMan Force J-UA9 driver for Windows 11
 
-This is a custom KMDF USB function driver plus a user-mode bridge that lets a
+This is a custom UDMF2 USB function driver plus a user-mode bridge that lets a
 Logitech WingMan Force J-UA9 joystick (`USB\VID_046D&PID_C281`) work on
 Windows 11, replacing the original Windows XP-era driver. It was
 reverse-engineered against the Linux kernel's `iforce` driver
@@ -9,7 +9,7 @@ protocol spec and no modern Windows driver exists for this device.
 
 ## Status
 
-- **Input (axes/buttons/POV hat) is fully working** end-to-end: KMDF driver
+- **Input (axes/buttons/POV hat) is fully working** end-to-end: UDMF2 driver
   reads the device's interrupt IN reports and a bridge app forwards them to a
   [vJoy](https://sourceforge.net/projects/vjoystick/) virtual device, so any
   Windows game/app that reads vJoy sees the stick normally.
@@ -31,7 +31,7 @@ protocol spec and no modern Windows driver exists for this device.
 ## Project layout
 
 - `JUa9TestDriver.c` / `JUa9TestDriver.inf` / `JUa9TestDriver.vcxproj` — the
-  KMDF USB function driver. Selects USB configuration 1, opens interrupt IN
+  UDMF2 USB function driver. Selects USB configuration 1, opens interrupt IN
   endpoint `0x82` and interrupt OUT endpoint `0x01`, and exposes a device
   interface with IOCTLs for reading the last report, sending a raw I-Force
   command frame, and issuing vendor "query ID" control transfers.
